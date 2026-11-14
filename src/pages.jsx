@@ -20,6 +20,69 @@ const donationReceiptDemoData = () => ({
   'Authorised Signature': '',
 });
 const makeId = () => globalThis.crypto?.randomUUID?.() || `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Online Payment', 'Other'];
+const receiptRequiredFields = new Set(['Donor Name', 'Date', 'Donation Amount', 'Payment Mode']);
+const multilineFields = new Set([
+  'Body', 'Letter Body', 'Reason for Request', 'Assessment Findings', 'Discussion', 'Decisions',
+  'Resolution Text', 'Message / Introduction', 'Financial Summary', 'Activities Conducted',
+  'Objectives', 'Outcomes', 'Address', 'Purpose', 'Notes', 'Declaration', 'Responsibilities',
+  'Working Conditions', 'Additional Approved Clauses', 'Employment Terms', 'Trust Information',
+  'Trustee Information', 'Programmes', 'Activities', 'Challenges', 'Future Priorities',
+  'Acknowledgements', 'Thank-you Message', 'Family / Household Information',
+]);
+const fieldExamples = {
+  'Donor Name': 'e.g. Sample Donor',
+  'Donation Amount': 'e.g. 25000',
+  'Transaction / Reference Number': 'e.g. DEMO-TXN-202611120045',
+  Purpose: 'e.g. General charitable activities',
+  'Payment Mode': 'Select a payment mode',
+  'Donor Address / Contact': '[Sample address and contact]',
+  'Contact Information': '[Sample contact]',
+  Contact: '[Sample contact]',
+  Address: '[Sample location]',
+  'Applicant Name': 'e.g. Sample Applicant',
+  'Beneficiary / Applicant': 'e.g. Sample Applicant',
+  'Applicant / Beneficiary': 'e.g. Sample Applicant',
+  'Authorised Signature': '[Sample signature]',
+  'Supporting Documents': '[Sample document reference]',
+};
+
+function isDateField(field) {
+  return field === 'Date' || field.endsWith('Date') || field === 'Joining Date' || field === 'Effective Date';
+}
+
+function isAmountField(field) {
+  return /amount|compensation|expenditure/i.test(field) && !/amount in words/i.test(field);
+}
+
+function getFieldPlaceholder(field) {
+  if (isDateField(field)) return '';
+  if (fieldExamples[field]) return fieldExamples[field];
+  if (/amount in words/i.test(field)) return 'e.g. Rupees Twenty Five Thousand Only';
+  if (isAmountField(field)) return 'e.g. 25000';
+  if (/signature/i.test(field)) return '[Sample signature]';
+  if (/contact|phone/i.test(field)) return '[Sample contact]';
+  if (/address|location|venue/i.test(field)) return '[Sample location]';
+  if (/reference|document number|voucher number/i.test(field)) return 'e.g. DEMO-REF-001';
+  return `Enter sample ${field.toLowerCase()}`;
+}
+
+function getDocumentAmount(document) {
+  const data = document.data || {};
+  const amount = data['Donation Amount'] || data.Amount || data.Expenditure
+    || (document.expenses || []).reduce((total, item) => total + (Number(item.amount) || 0), 0);
+  return Number(amount) > 0
+    ? `₹${Number(amount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+    : '—';
+}
+
+function formatDocumentDate(value) {
+  if (!value) return '—';
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 function PageHeading({ eyebrow, title, description, action }) {
   return <div className="page-heading"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1><p>{description}</p></div>{action}</div>;
@@ -54,11 +117,12 @@ export function Dashboard() {
 
 function DocumentTable({ documents }) {
   if (!documents.length) return <div className="empty-state"><FileTextIcon /><strong>No documents yet</strong><span>Create your first document or choose a template to get started.</span><Link className="button button-secondary" to="/create">Create document</Link></div>;
-  return <div className="table-scroll"><table className="data-table"><thead><tr><th>Document</th><th>Document Number</th><th>Date</th><th>Category</th><th>Status</th><th>Created By</th><th aria-label="Actions" /></tr></thead><tbody>{documents.map((document) => {
+  return <div className="table-scroll"><table className="data-table"><thead><tr><th>Document</th><th>Document Number</th><th>Date</th><th>Amount</th><th>Category</th><th>Status</th><th>Created By</th><th aria-label="Actions" /></tr></thead><tbody>{documents.map((document) => {
     const type = getDocumentType(document.typeId);
     return <tr key={document.id}>
       <td><Link className="table-title" to={`/view/${document.id}`}>{type?.name || 'Document'}</Link></td>
-      <td>{document.number}</td><td>{document.data?.Date || document.createdAt?.slice(0, 10) || '—'}</td>
+      <td>{document.number}</td><td>{formatDocumentDate(document.data?.Date || document.data?.['Application Date'] || document.createdAt)}</td>
+      <td>{getDocumentAmount(document)}</td>
       <td>{type?.category || '—'}</td><td><StatusBadge status={document.status} /></td><td>{document.createdBy || 'Admin'}</td>
       <td><div className="row-actions"><Link aria-label="View document" title="View" className="icon-button" to={`/view/${document.id}`}><Eye size={15} /></Link><Link aria-label="Edit document" title="Edit" className="icon-button" to={`/edit/${document.id}`}><Pencil size={14} /></Link></div></td>
     </tr>;
@@ -211,14 +275,28 @@ export function DocumentEditorPage({ mode = 'create' }) {
           <div className="number-field"><span>Document Number</span><strong>{model.number}</strong></div>
           <label className="form-field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
           {type.id === 'donation-receipt' && <p className="demo-data-note">Sample values are for preview only. Replace and verify all information before issuing an official receipt.</p>}
-          <div className={`form-grid ${type.id === 'donation-receipt' ? 'receipt-editor-fields' : ''}`}>{type.fields.map((field) => <label className={`form-field ${['Body', 'Letter Body', 'Reason for Request', 'Assessment Findings', 'Discussion', 'Decisions', 'Resolution Text', 'Message / Introduction', 'Financial Summary'].includes(field) ? 'wide-field' : ''}`} key={field}>
-            <span>{field}</span>{['Body', 'Letter Body', 'Reason for Request', 'Assessment Findings', 'Discussion', 'Decisions', 'Resolution Text', 'Message / Introduction', 'Financial Summary', 'Activities Conducted', 'Objectives', 'Outcomes'].includes(field)
-              ? <textarea value={values[field] || ''} onChange={(event) => setField(field, event.target.value)} rows={3} placeholder={`Enter ${field.toLowerCase()}`} />
-              : <input type={field === 'Date' || field.endsWith('Date') || field === 'Joining Date' || field === 'Effective Date' ? 'date' : type.id === 'donation-receipt' && field === 'Donation Amount' ? 'number' : 'text'} min={type.id === 'donation-receipt' && field === 'Donation Amount' ? '0.01' : undefined} step={type.id === 'donation-receipt' && field === 'Donation Amount' ? '0.01' : undefined} maxLength={type.id === 'donation-receipt' ? ({ 'Donor Name': 100, 'Donor Address / Contact': 180, 'Amount in Words': 120, 'Payment Mode': 40, 'Transaction / Reference Number': 60, Purpose: 140, Notes: 80, 'Authorised Signature': 60 }[field]) : undefined} required={type.id === 'donation-receipt' && ['Date', 'Donor Name', 'Donation Amount', 'Payment Mode'].includes(field)} value={values[field] || ''} onChange={(event) => setField(field, event.target.value)} placeholder={field.toLowerCase().includes('amount') || field === 'Compensation' ? 'Enter amount' : `Enter ${field.toLowerCase()}`} />}
-          </label>)}</div>
+          <div className={`form-grid ${type.id === 'donation-receipt' ? 'receipt-editor-fields' : ''}`}>{type.fields.map((field) => {
+            const required = type.id === 'donation-receipt' && receiptRequiredFields.has(field);
+            const isPaymentMode = field === 'Payment Mode';
+            const isDecision = field === 'Decision';
+            const isAmount = isAmountField(field);
+            const isMultiline = multilineFields.has(field);
+            return <label className={`form-field ${isMultiline ? 'wide-field' : ''}`} key={field}>
+              <span>{field}{required && <abbr className="required-mark" title="Required"> *</abbr>}</span>
+              {isMultiline
+                ? <textarea required={required} value={values[field] || ''} onChange={(event) => setField(field, event.target.value)} rows={3} placeholder={getFieldPlaceholder(field)} />
+                : isPaymentMode || isDecision
+                  ? <select required={required} value={values[field] || ''} onChange={(event) => setField(field, event.target.value)}>
+                    <option value="">{isPaymentMode ? 'Select payment mode' : 'Select decision'}</option>
+                    {(isPaymentMode ? paymentModes : ['Pending Review', 'Approved', 'Rejected']).map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                  : <input type={isDateField(field) ? 'date' : isAmount ? 'number' : 'text'} min={isAmount ? '0' : undefined} step={isAmount ? '0.01' : undefined} maxLength={type.id === 'donation-receipt' ? ({ 'Donor Name': 100, 'Donor Address / Contact': 180, 'Amount in Words': 120, 'Transaction / Reference Number': 60, Purpose: 140, Notes: 80, 'Authorised Signature': 60 }[field]) : undefined} required={required} value={values[field] || ''} onChange={(event) => setField(field, event.target.value)} placeholder={getFieldPlaceholder(field)} />}
+              {field === 'Transaction / Reference Number' && <small className="field-helper">Optional: enter the bank, UPI or cheque reference.</small>}
+            </label>;
+          })}</div>
           {type.expenses && <div className="expense-entry">
             <div className="section-heading"><div><h3>Expense items</h3><p>Total: {expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0).toFixed(2)}</p></div><button className="button button-quiet" type="button" onClick={() => setExpenses([...expenses, { date: '', description: '', category: '', amount: '', reference: '' }])}><Plus size={15} /> Add row</button></div>
-            {expenses.map((expense, index) => <div className="expense-row" key={index}>{Object.entries({ date: 'Date', description: 'Description', category: 'Category', amount: 'Amount', reference: 'Receipt reference' }).map(([key, label]) => <label className="form-field" key={key}><span>{label}</span><input type={key === 'date' ? 'date' : key === 'amount' ? 'number' : 'text'} min={key === 'amount' ? '0' : undefined} step={key === 'amount' ? '0.01' : undefined} value={expense[key]} onChange={(event) => setExpenses(expenses.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: event.target.value } : row))} /></label>)}</div>)}
+            {expenses.map((expense, index) => <div className="expense-row" key={index}>{Object.entries({ date: 'Date', description: 'Description', category: 'Category', amount: 'Amount', reference: 'Receipt reference' }).map(([key, label]) => <label className="form-field" key={key}><span>{label}</span><input type={key === 'date' ? 'date' : key === 'amount' ? 'number' : 'text'} min={key === 'amount' ? '0' : undefined} step={key === 'amount' ? '0.01' : undefined} value={expense[key]} onChange={(event) => setExpenses(expenses.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: event.target.value } : row))} placeholder={key === 'date' ? undefined : key === 'amount' ? 'e.g. 1200' : key === 'reference' ? 'e.g. DEMO-BILL-01' : `Enter sample ${label.toLowerCase()}`} /></label>)}</div>)}
           </div>}
           <div className="editor-actions"><button type="button" className="button button-primary" onClick={save}>{mode === 'edit' ? 'Save Changes' : 'Save Draft'}</button><button type="button" className="button button-secondary" onClick={() => window.print()}><Printer size={16} /> Print</button><button type="button" className="button button-secondary" onClick={handlePdf}><ArrowDownToLine size={16} /> Download PDF</button></div>
         </>}
@@ -277,7 +355,7 @@ export function SettingsPage() {
   return <>
     <PageHeading eyebrow="PREFERENCES" title="Settings" description="Configure editable Trust profile and document defaults." />
     <section className="panel settings-panel"><div className="section-heading"><div><h2>Trust Profile</h2><p>Use verified Trust details only. Empty fields remain as placeholders on documents.</p></div></div>
-      <div className="form-grid settings-grid">{[['trustName', 'Trust Name'], ['address', 'Address'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website'], ['registrationDetails', 'Registration details (verified only)'], ['defaultFooter', 'Default Footer']].map(([key, label]) => <label className={`form-field ${['address', 'defaultFooter', 'registrationDetails'].includes(key) ? 'wide-field' : ''}`} key={key}><span>{label}</span>{['address', 'defaultFooter', 'registrationDetails'].includes(key) ? <textarea rows={2} value={settings[key] || ''} onChange={(event) => update(key, event.target.value)} /> : <input value={settings[key] || ''} onChange={(event) => update(key, event.target.value)} />}</label>)}</div>
+      <div className="form-grid settings-grid">{[['trustName', 'Trust Name'], ['address', 'Address'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website'], ['registrationDetails', 'Registration details (verified only)'], ['defaultFooter', 'Default Footer']].map(([key, label]) => <label className={`form-field ${['address', 'defaultFooter', 'registrationDetails'].includes(key) ? 'wide-field' : ''}`} key={key}><span>{label}</span>{['address', 'defaultFooter', 'registrationDetails'].includes(key) ? <textarea rows={2} value={settings[key] || ''} onChange={(event) => update(key, event.target.value)} placeholder={`Enter verified ${label.toLowerCase()}`} /> : <input value={settings[key] || ''} onChange={(event) => update(key, event.target.value)} placeholder={`Enter verified ${label.toLowerCase()}`} />}</label>)}</div>
       <div className="settings-actions"><span role={saveError ? 'alert' : 'status'}>{saveError || (saved ? 'Settings saved in this browser.' : 'Changes are not saved yet.')}</span><button className="button button-primary" onClick={save}>Save settings</button></div>
     </section>
   </>;

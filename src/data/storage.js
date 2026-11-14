@@ -1,6 +1,8 @@
 import { getDocumentType } from './documentTypes.js';
+import { createDemoDocuments } from './demoData.js';
 
 const DOCUMENTS_KEY = 'ksr.documents.v1';
+const DEMO_SEEDED_KEY = 'ksr.demo-seeded.v1';
 const SETTINGS_KEY = 'ksr.settings.v1';
 const NUMBER_COUNTERS_KEY = 'ksr.document-number-counters.v1';
 
@@ -16,8 +18,16 @@ function readJson(key, fallback) {
 
 export const documentRepository = {
   list() {
-    const documents = readJson(DOCUMENTS_KEY, []);
-    return Array.isArray(documents) ? documents : [];
+    let documents = readJson(DOCUMENTS_KEY, []);
+    if (!Array.isArray(documents)) return [];
+    if (localStorage.getItem(DEMO_SEEDED_KEY) !== 'true') {
+      if (documents.length === 0) {
+        documents = createDemoDocuments();
+        localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+      }
+      localStorage.setItem(DEMO_SEEDED_KEY, 'true');
+    }
+    return documents;
   },
   get(id) {
     return this.list().find((document) => document.id === id);

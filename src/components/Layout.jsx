@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  Archive, BadgeIndianRupee, BookOpen, ChevronDown, ClipboardList, FilePlus2, FileText,
+  Archive, BadgeIndianRupee, BookOpen, ChevronDown, ChevronUp, ClipboardList, FilePlus2, FileText,
   HandHeart, LayoutDashboard, Menu, PanelLeftClose, PanelLeftOpen, Settings, Users,
   WalletCards, X,
 } from 'lucide-react';
@@ -13,8 +13,8 @@ const navigation = [
 
 const documentLinks = [
   { label: 'All Documents', to: '/documents', icon: FileText },
-  { label: 'Templates', to: '/templates', icon: BookOpen },
   { label: 'Create Document', to: '/create', icon: FilePlus2 },
+  { label: 'Templates', to: '/templates', icon: BookOpen },
 ];
 
 const categories = [
@@ -120,15 +120,6 @@ export function Layout() {
           <OrganizationLogo className="sidebar-logo" />
           <div className="brand-name"><strong>KSR Apadbandhu</strong><span>Charitable Trust</span></div>
           <button
-            className="sidebar-toggle"
-            type="button"
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onClick={toggleSidebar}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-          </button>
-          <button
             className="mobile-sidebar-close"
             type="button"
             aria-label="Close navigation"
@@ -137,6 +128,15 @@ export function Layout() {
             <X size={20} />
           </button>
         </div>
+        <button
+          className="sidebar-toggle"
+          type="button"
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+        </button>
         <nav className="sidebar-nav" aria-label="Main navigation">
           <div className="nav-caption">WORKSPACE</div>
           {navigation.map(({ label, to, icon: Icon }) => (
@@ -161,7 +161,14 @@ export function Layout() {
               data-tooltip="Documents"
               title={sidebarCollapsed ? 'Documents' : undefined}
               aria-label="Documents"
-              onClick={closeMobileNavigation}
+              onClick={(event) => {
+                if (!window.matchMedia('(min-width: 769px)').matches) {
+                  event.preventDefault();
+                  setDocumentsExpanded((expanded) => !expanded);
+                } else {
+                  closeMobileNavigation();
+                }
+              }}
             >
               <FileText size={18} strokeWidth={1.8} />
               <span className="nav-link-label">Documents</span>
@@ -173,24 +180,26 @@ export function Layout() {
               aria-expanded={documentsExpanded}
               onClick={() => setDocumentsExpanded((expanded) => !expanded)}
             >
-              <ChevronDown size={16} />
+              {documentsExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
           </div>
-          {documentsExpanded && !sidebarCollapsed && (
-            <div className="nav-submenu">
+          <div
+            className={`nav-submenu${documentsExpanded && (!sidebarCollapsed || mobileOpen) ? ' nav-submenu-open' : ''}`}
+            aria-hidden={!(documentsExpanded && (!sidebarCollapsed || mobileOpen))}
+          >
               {documentLinks.map(({ label, to, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
                   end={to === '/documents'}
                   className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  tabIndex={documentsExpanded && (!sidebarCollapsed || mobileOpen) ? undefined : -1}
                   onClick={closeMobileNavigation}
                 >
                   <Icon size={16} strokeWidth={1.8} /><span className="nav-link-label">{label}</span>
                 </NavLink>
               ))}
-            </div>
-          )}
+          </div>
           <div className="nav-caption category-caption">CATEGORIES</div>
           {categories.map(({ label, icon: Icon }) => (
             <NavLink
@@ -226,11 +235,11 @@ export function Layout() {
             <button
               className="mobile-menu-button"
               type="button"
-              aria-label="Open navigation"
+              aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
               aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen(true)}
+              onClick={() => setMobileOpen((open) => !open)}
             >
-              <Menu size={21} />
+              {mobileOpen ? <X size={21} /> : <Menu size={21} />}
             </button>
             <OrganizationLogo className="mobile-logo" />
             <strong>KSR Apadbandhu</strong>
